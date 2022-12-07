@@ -1,3 +1,4 @@
+% vim:sw=2:ts=2
 -module(ra_kv_store).
 -behaviour(ra_machine).
 -export([init/1, apply/3, servers/0, start_cluster/0, maybe_block/0, until_block/0, consistent_query/0]).
@@ -16,7 +17,10 @@ apply(_Meta, {read, Key}, State) ->
   {State, Reply, []}.
 
 servers() ->
-  [{ra_kv, 'ra1'}, {ra_kv, 'ra2'}, {ra_kv, 'ra3'}].
+  {ok, H} = inet:gethostname(),
+  Names = ["ra1", "ra2", "ra3"],
+  Nodes = [ list_to_atom(N0 ++ "@" ++ H) || N0 <- Names],
+  [{ra_kv, N1} || N1 <- Nodes].
 
 start_cluster() ->
   Servers = servers(),
@@ -29,7 +33,7 @@ start_cluster() ->
 
 maybe_block() ->
   io:format("Going for a round...~n"),
-  [Server1, _, _] = Servers = servers(),
+  [Server1, _, _] = servers(),
   timer:sleep(5000),
   ok = ra:stop_server(Server1), %Stop one server
   timer:sleep(5000),
