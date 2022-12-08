@@ -1,14 +1,20 @@
 % vim:sw=2:ts=2
 -module(ra_kv_store).
+
 -behaviour(ra_machine).
+
+-include_lib("kernel/include/logger.hrl").
+
 -export([init/1, apply/3, servers/0, start_cluster/0, maybe_block/0, until_block/0, consistent_query/0]).
 
--define(vcall(E), (io:format(user, "~w: ~s => ~p~n", [?LINE, ??E, E]))).
+-define(vcall(E), (?LOG_INFO(user, "~w: ~s => ~p", [?LINE, ??E, E]))).
 
 -opaque state() :: #{term() => term()}.
 -type ra_kv_command() :: {write, Key :: term(), Value :: term()} | {read, Key :: term()}.
 
-init(_Config) -> #{}.
+init(_Config) ->
+  logger:set_primary_config(level, debug),
+  #{}.
 
 apply(_Meta, {write, Key, Value}, State) ->
   {maps:put(Key, Value, State), ok, []};
@@ -24,23 +30,26 @@ servers() ->
 
 start_cluster() ->
   Servers = servers(),
-  [io:format("Attempting to communicate with node ~s, response: ~s~n", [N, net_adm:ping(N)]) || {_, N} <- Servers],
+  [?LOG_INFO("Attempting to communicate with node ~s, response: ~s", [N, net_adm:ping(N)]) || {_, N} <- Servers],
   [rpc:call(N, ra, start, []) || {_, N} <- Servers],
   ClusterName = cluster,
   Config = #{},
   Machine = {module, ?MODULE, Config},
-  ra:start_cluster(default, ClusterName, Machine, servers()).
+  ra:start_cluster(default, ClusterName, Machine, Servers).
 
 maybe_block() ->
-  io:format("Going for a round...~n"),
+  ?LOG_INFO("Going for a round..."),
   [Server1, _, _] = servers(),
   timer:sleep(5000),
   ok = ra:stop_server(Server1), %Stop one server
   timer:sleep(5000),
   Leader = consistent_query(),
-  io:format("Restarting server  ~p~n", [Leader]),
+  ?LOG_INFO("Stopping server  ~p", [Leader]),
   ok = ra:stop_server(Leader), %Stop the leader. Now we have no majority.
   timer:sleep(1000),
+  ?LOG_INFO("ra:overview  ~p", [ra:overview()]),
+  timer:sleep(1000),
+  ?LOG_INFO("Starting server  ~p", [Leader]),
   ok = ra:restart_server(Leader), %Restart the stopped leader. After an election we should have majority again
   timer:sleep(1000),
   consistent_query(),
